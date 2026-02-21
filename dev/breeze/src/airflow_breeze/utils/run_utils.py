@@ -212,6 +212,11 @@ def get_environments_to_print(env: Mapping[str, str] | None):
     return env_to_print
 
 
+def get_prek_command() -> list[str]:
+    """Return command to run prek via python -m (requires prek>=0.3.4)."""
+    return [sys.executable, "-m", "prek"]
+
+
 def assert_prek_installed():
     """
     Check if prek is installed in the right version.
@@ -225,17 +230,17 @@ def assert_prek_installed():
     prek_config = yaml.safe_load((AIRFLOW_ROOT_PATH / ".pre-commit-config.yaml").read_text())
     min_prek_version = prek_config["minimum_prek_version"]
 
-    python_executable = sys.executable
-    get_console().print(f"[info]Checking prek installed for {python_executable}[/]")
+    prek_cmd = get_prek_command()
+    get_console().print("[info]Checking prek installed[/]")
     need_to_reinstall_prek = False
     try:
         command_result = run_command(
-            ["prek", "--version"],
+            [*prek_cmd, "--version"],
             capture_output=True,
             text=True,
             check=False,
         )
-        if command_result.returncode == 0:
+        if command_result and command_result.returncode == 0:
             if command_result.stdout:
                 prek_version = command_result.stdout.split(" ")[1].strip()
                 if Version(prek_version) >= Version(min_prek_version):
@@ -246,7 +251,10 @@ def assert_prek_installed():
                 else:
                     get_console().print(
                         f"\n[error]Package name prek version is wrong. It should be "
-                        f"at least {min_prek_version} and is {prek_version}.[/]\n\n"
+                        f"at least {min_prek_version} and is {prek_version}.[/]\n"
+                    )
+                    get_console().print(
+                        "[info]Reinstall breeze: 'uv tool install -e ./dev/breeze --force'[/]\n"
                     )
                     sys.exit(1)
             else:
@@ -256,15 +264,13 @@ def assert_prek_installed():
         else:
             need_to_reinstall_prek = True
             get_console().print("\n[error]Error checking for prek-installation:[/]\n")
-            get_console().print(command_result.stderr)
+            if command_result and command_result.stderr:
+                get_console().print(command_result.stderr)
     except FileNotFoundError as e:
         need_to_reinstall_prek = True
         get_console().print(f"\n[error]Error checking for prek installation: [/]\n{e}\n")
     if need_to_reinstall_prek:
-        get_console().print("[info]Make sure to install prek. For example by running:\n")
-        get_console().print("   uv tool install prek\n")
-        get_console().print("Or if you prefer pipx:\n")
-        get_console().print("   pipx install prek")
+        get_console().print("[info]Reinstall breeze: 'uv tool install -e ./dev/breeze --force'[/]")
         sys.exit(1)
 
 
@@ -537,7 +543,7 @@ def run_compile_ui_assets(
             "[info]However, it requires you to have local pnpm installation.\n"
         )
     command_to_execute = [
-        "prek",
+        *get_prek_command(),
         "run",
         "--hook-stage",
         "manual",
